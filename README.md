@@ -143,6 +143,7 @@ async function swap({ quoteSetId, quoteId, userAddress }) {
   "quoteSetId": "qs_58b12f0b-6a2e-4b0c-9f4e-1c2d3e4f5a6b",
   "adapterId": "algebra",
   "feeMode": "augustus",
+  "venueName": "Satsuma",
   "txRequest": {
     "chainId": 14,
     "to": "0x75FaCE9583A037bf0870Ef6D24f08e207D2CCdDc",
@@ -268,7 +269,6 @@ async function doSwap() {
 | `deadlineSeconds` | — | Quote/tx deadline. |
 | `partnerId` | — | Usually set via API key; override requests a *lower* fee. |
 
-A quote returns `venueName` (real DEX brand, e.g. `Rooster Finance`, `SparkDEX V3.1`, `JuiceSwap`) for display, and `validUntil`, re-quote if it has passed.
 
 ## Partners & API keys
 
