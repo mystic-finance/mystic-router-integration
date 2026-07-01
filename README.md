@@ -203,15 +203,14 @@ async function send(signer, txRequest) {
 
 > `status: 1` means success, `status: 0` means the transaction reverted. `hash` is what you register in Step 6.
 
-### 6. Save transaction
+### 6. (Optional) Save transaction
 
-Register the hash so the operator can confirm status and book partner fees:
+Register the hash so the operator can confirm status. This is necessary for partners to call to book partner fees gained from this swap.
 
 ```js
 async function track({ chainId, hash, from, quoteSetId, quoteId }) {
   await axios.post(`${BASE}/v1/tx`, { chainId, hash, from, quoteSetId, quoteId });
 }
-// status later: GET /v1/tx/:hash
 ```
 
 **Example response** (`GET /v1/tx/0x9c1f…4e7a`):
