@@ -1,6 +1,6 @@
 # Mystic Router — API Integration Guide
 
-In the following guide, we introduce how to use the Mystic Router swap API in the most efficient way. For detailed parameter settings, see the interactive API docs at `GET /docs` (Swagger), or `GET /llm.txt` for a machine-readable summary. 
+In the following guide, we introduce how to use the Mystic Router swap API in the most efficient way. For detailed parameter settings, see the interactive API docs at `https://router.mysticfinance.xyz/docs` (Swagger), or `https://router.mysticfinance.xyz/llm.txt` for a machine-readable summary. 
 
 ## Demos
 
@@ -8,7 +8,7 @@ Two runnable end-to-end demos live in this repo. Both point at the live router (
 
 ### Frontend
 
-[`demos/frontend`](demos/frontend) — a React + Vite single-page app with a wallet connect and swap form.
+[`demos/frontend`](demos/frontend) — a React + Vite app
 
 ```bash
 cd demos/frontend
@@ -18,7 +18,7 @@ npm run dev
 
 ### Backend
 
-[`demos/backend`](demos/backend) — a Node.js script (axios + ethers) that runs all 6 steps from the command line.
+[`demos/backend`](demos/backend) — a Node.js script that runs all 6 steps from the command line.
 
 ```bash
 cd demos/backend
@@ -29,22 +29,22 @@ npm start
 
 ## Swap Overview
 
-The swap function enables users to seamlessly exchange one asset for another directly at the **best swap rate**. Mystic is a two-layer aggregator — a **first-party DEX engine** (strong on Flare, Plume, Citrea) plus a **meta-layer** over external aggregators (0x, 1inch, OpenOcean, Kyber, LI.FI, Paraswap), across multiple EVM chains (Ethereum `1`, Flare `14`, Plume `98866`, Citrea `4114`, and more).
+The swap function enables users to seamlessly exchange one asset for another directly at the best swap rate. 
+Mystic is a two-layer aggregator, a DEX aggregator engine built on Augustus V5, and a meta aggregator on available external aggregators (0x, 1inch, OpenOcean, Kyber, LI.FI, Paraswap). and supports over 10 chains including Ethereum, Flare, Plume, Citrea.
 
-You make one REST call to get ranked routes, one to get a **ready-to-send transaction**, then submit it from the user's wallet.
+You make one API call to get ranked routes, and another one to get a ready-to-send transaction, then submit it from the user's wallet.
 
-> Unlike some APIs, there is **no separate `gasPrice` or router-address step** — Step 3 (*Get transaction body*) returns a fully-formed transaction with gas and the target contract already resolved.
 
 > **Amounts are in the token's smallest unit (wei).** `1 USDC` (6 decimals) = `"1000000"`. Use Step 1 (`resolveToken`) to get a token's `decimals`.
 
 ## Swap Tokens in 6 Steps
 
-1. Get token info — `tokenList()` / `resolveToken()`
-2. Price quote — `quote()`
-3. Get transaction body — `swap()`
-4. Set a token allowance — `ensureAllowance()`
-5. Send transaction — `send()`
-6. Track transaction — `track()`
+1. Get token info
+2. Price quote 
+3. Get transaction body 
+4. Set a token allowance
+5. Send transaction 
+6. Track transaction 
 
 All examples use JavaScript with **axios** for HTTP and **ethers.js** for chain interactions.
 
@@ -75,7 +75,7 @@ async function tokenList(chainId) {
 ]
 ```
 
-When a user pastes an arbitrary/unknown address, resolve its on-chain metadata (this also adds it to the registry):
+When a user pastes an unknown asset address, resolve its on-chain metadata (this also adds it to the registry):
 
 ```js
 async function resolveToken(chainId, address) {
@@ -90,9 +90,9 @@ async function resolveToken(chainId, address) {
 { "chainId": 14, "address": "0x1d80c49bbbcd1c0911346656b529df9e5c2f783d", "symbol": "WFLR", "decimals": 18, "name": "Wrapped Flare" }
 ```
 
-> `resolveToken` returns **metadata only** — it does not tell you whether the token is *tradeable*. To check "is there a route for this pair?", just run the quote in Step 2: a result means tradeable; a `404 INSUFFICIENT_LIQUIDITY` means no route.
+> `resolveToken` returns metadata only, it does not tell you whether the token is tradeable. To check if there's a route for this pair, run the quote in Step 2: a result means tradeable; a `404 INSUFFICIENT_LIQUIDITY` means no available route.
 
-### 2. Price quote
+### 2. Get price quote
 
 Fan out across every DEX + aggregator and return routes ranked best-first (`quotes[0]` is the best):
 
@@ -129,11 +129,11 @@ async function quote({ chainId, sellToken, buyToken, sellAmount, taker, slippage
 }
 ```
 
-> `buyAmount` is the expected output (`64199` = `0.064199` USDC.e, since USDC.e has 6 decimals); `minBuyAmount` is the worst case after slippage. Keep the `quoteSetId` and the chosen `quoteId`, you pass both to Step 3.
+`buyAmount` is the expected output (`64199` = `0.064199` USDC.e, since USDC.e has 6 decimals); `minBuyAmount` is the worst case after slippage. Keep the `quoteSetId` and the chosen `quoteId`, you pass both to Step 3.
 
 Native asset in/out: use `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` as the token. Optional fields: `recipient` (send output elsewhere), `deadlineSeconds`, `partnerId`.
 
-### 3. Get transaction body
+### 3. Build transaction from quote
 
 Turn the chosen quote into an unsigned transaction (and learn what approval it needs):
 
@@ -144,7 +144,7 @@ async function swap({ quoteSetId, quoteId, userAddress }) {
 }
 ```
 
-**Example response** (`data` truncated for readability):
+**Example response** (data truncated for readability):
 
 ```json
 {
@@ -166,7 +166,7 @@ async function swap({ quoteSetId, quoteId, userAddress }) {
 }
 ```
 
-> `txRequest` is what you send from the wallet (Step 5). `approval` tells you which token/spender to approve in Step 4, it's `null` when no approval is needed. If `feeMode` is `augustus`, the fee handling is already baked into `txRequest.data`; you don't add anything.
+`txRequest` is what you send from the wallet (Step 5). `approval` tells you which token/spender to approve in Step 4, it's `null` when no approval is needed. If `feeMode` is `augustus`, the fee handling is already baked into `txRequest.data`; you don't need to add anything.
 
 ### 4. Set a token allowance
 
@@ -228,13 +228,13 @@ async function track({ chainId, hash, from, quoteSetId, quoteId }) {
 {
   "chainId": 14,
   "hash": "0x9c1f…4e7a",
-  "status": "MINED",
+  "status": "SUCCESS",
   "blockNumber": 39218844,
   "from": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
 }
 ```
 
-> `status` is `PENDING` right after you submit, then becomes `MINED` (success) or `FAILED` (reverted) once the operator confirms it on-chain. Only a `MINED` swap that matches the original quote books the partner fee — so a spoofed or mismatched hash can't record a fee.
+`status` is `PENDING` right after you submit, then becomes `SUCCESS` (success) or `FAILED` (reverted) once the operator confirms it on-chain. Only a `SUCCESS` swap that matches the original quote books the partner fee — so a spoofed or mismatched hash can't record a fee.
 
 ### Putting it all together
 
@@ -277,21 +277,22 @@ async function doSwap() {
 | `deadlineSeconds` | — | Quote/tx deadline. |
 | `partnerId` | — | Usually set via API key; override requests a *lower* fee. |
 
-A quote returns `venueName` (real DEX brand, e.g. `Rooster Finance`, `SparkDEX V3.1`, `JuiceSwap`) for display, and `validUntil` — re-quote if it has passed.
+A quote returns `venueName` (real DEX brand, e.g. `Rooster Finance`, `SparkDEX V3.1`, `JuiceSwap`) for display, and `validUntil`, re-quote if it has passed.
 
 ## Partners & API keys
 
 If you're a **partner** (you earn a fee on the swaps you route). The Mystic team provisions your account and gives you two things:
 
-- a **`partnerId`** (your identifier), and
+- a `partnerId` (your identifier), and
 - an **API key** (a secret).
 
 ### Using your key
 
-Send the key as the **`x-api-key`** header on your `quote` and `build` calls. That authenticates you and applies your configured fee + payout automatically:
+Send the key as the **`x-api-key`** header on your `quote` (step 2) and `build` (step 3) calls. That authenticates you and applies your configured fee + payout automatically:
 
 ```js
 const http = axios.create({ baseURL: BASE, headers: { 'x-api-key': process.env.MYSTIC_API_KEY } });
+
 await http.post('/v1/swap/quote', { chainId, sellToken, buyToken, sellAmount, taker, slippageBps: 50, partnerId: process.env.MYSTIC_PARTNER_ID });
 ```
 
