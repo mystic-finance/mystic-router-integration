@@ -1,31 +1,19 @@
-# Mystic Router — API Integration Guide
+# API Integration Guide
 
-In the following guide, we introduce how to use the Mystic Router swap API in the most efficient way. For detailed parameter settings, see the interactive API docs at `https://router.mysticfinance.xyz/docs` (Swagger), or `https://router.mysticfinance.xyz/llm.txt` for a machine-readable summary. 
+In the following guide, we introduce how to use the Mystic Router API in the most efficient way. For detailed parameter settings, see the interactive API docs at `https://router.mysticfinance.xyz/docs` (Swagger), or `https://router.mysticfinance.xyz/llm.txt` for a machine-readable summary. 
 
 ## Demos
 
-Two runnable end-to-end demos live in this repo. Both point at the live router (`https://router.mysticfinance.xyz`) by default and walk through the full quote → build → send → track flow described below.
+Two runnable end-to-end demos live in this repo.
 
 ### Frontend
 
 [`demos/frontend`](demos/frontend) — a React + Vite app
 
-```bash
-cd demos/frontend
-npm install
-npm run dev
-```
-
 ### Backend
 
 [`demos/backend`](demos/backend) — a Node.js script that runs all 6 steps from the command line.
 
-```bash
-cd demos/backend
-npm install
-cp .env.example .env   # add RPC_URL + PRIVATE_KEY (and optional MYSTIC_API_KEY)
-npm start
-```
 
 ## Swap Overview
 
@@ -40,8 +28,8 @@ You make one API call to get ranked routes, and another one to get a ready-to-se
 ## Swap Tokens in 6 Steps
 
 1. Get token info
-2. Price quote 
-3. Get transaction body 
+2. Get price quote 
+3. Build transaction from quote
 4. Set a token allowance
 5. Send transaction 
 6. Track transaction 
