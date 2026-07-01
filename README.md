@@ -1,6 +1,10 @@
 # API Integration Guide
 
-In the following guide, we introduce how to use the Mystic Router API in the most efficient way. For detailed parameter settings, see the interactive API docs at `https://router.mysticfinance.xyz/docs` (Swagger), or `https://router.mysticfinance.xyz/llm.txt` for a machine-readable summary. 
+In the following guide, we introduce how to use the Mystic Router API in the most efficient way. 
+
+For detailed parameter settings, see the interactive API docs at:
+- [Swagger](https://router.mysticfinance.xyz/docs)
+- [LLM](https://router.mysticfinance.xyz/llm.txt)
 
 ## Demos
 
