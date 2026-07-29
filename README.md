@@ -33,7 +33,7 @@ Access the best swap rates, deep liquidity and reliable execution across 12 chai
 ### Core capabilities
 
 - **Two-layer aggregation.** A first-party routing engine that prices pools directly from on-chain dexes, plus a meta-aggregator over every major external aggregator. Both are quoted in parallel on every request, so you get the best price possible in one single API.
-- **Smart order routing.** Multi-hop and split routes across pools, ranked by net output rather than by whichever venue answered first, giving unified access to 1000+ liquidity sources
+- **Smart order routing.** Multi-hop and split routes across pools, ranked by net output rather than by whichever venue answered first, giving unified access to 100+ liquidity sources
 - **Coverage where others are thin.** Mystic aggregates on the major EVM chains, plus chains the big aggregators serve poorly (Flare, Plume, Citrea), giving a unified interface for 12+ chains
 - **Built-in monetisation.** Route swaps under your API key and earn a share of every fee. See [Fees](#fees).
 
