@@ -674,13 +674,13 @@ Fee Collection is not immediate and is done in batches, it accumulates trades rb
 
 ### Partner fees
 
-Partners earn a cut of the fee on the swaps they route. The default arrangement is **revenue share at 85/15**: the user pays the standard 0.15% and you receive your share of it (12.75 bps), while Mystic keeps the other half. Attaching your key never makes a quote worse for your user.
+Partners earn a cut of the fee on the swaps they route. The default arrangement is **revenue share at 75/25**: the user pays the standard 0.15% and you receive your share of it (11.25 bps), while Mystic keeps the other half. Attaching your key never makes a quote worse for your user.
 
 You can choose either model when your account is provisioned:
 
 | Model | Total charged to the user | You earn |
 |---|---|---|
-| **Revenue share** (default) | Unchanged, 0.15% | Your configured percentage of the fee. Default **75%**, so 0.1275% |
+| **Revenue share** (default) | Unchanged, 0.15% | Your configured percentage of the fee. Default **75%**, so 0.1125% |
 | **Surcharge** | 0.15% **+** your bps | Your full bps, on top of Mystic's cut |
 
 On the surcharge model your bps is capped by 100 bps (1%); requesting more returns `400 FEE_VIOLATION`. `partnerFeeBpsOverride` can only ever request less than your configured default, for a promotional pair or a fee-free campaign.
