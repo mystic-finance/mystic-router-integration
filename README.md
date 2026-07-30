@@ -288,7 +288,7 @@ async function send(signer, txRequest) {
 
 > `status: 1` means success, `status: 0` means the transaction reverted. `hash` is what you register in Step 6.
 
-**Gas.** `txRequest` carries no `gas` field on purpose. Let your wallet or provider run `eth_estimateGas` on it. The `estimatedGas` on a quote is a ranking input, not a gas limit; if you set a limit from it, add a buffer of 1.25×–2.5×, or the transaction may run out of gas on a route whose real cost differs from the estimate.
+**Gas.** `txRequest` carries no `gas` field on purpose. Let your wallet or provider run `eth_estimateGas` on it. The `estimatedGas` on a quote is a ranking input, not a gas limit; if you set a limit from it, add a buffer of 1.25×–2.5×, or the transaction may run out of gas on a route whose real cost differs from the estimate. To price the fee yourself, or to show the user a speed choice, read [`GET /v1/gas-price`](#get-v1gas-price).
 
 ### 6. Get transaction status (optional)
 
@@ -530,6 +530,38 @@ Live chain support with the contracts Mystic uses:
   }
 ]
 ```
+
+### `GET /v1/gas-price`
+
+Current gas price in three speed tiers. You don't need this to swap, `txRequest` is signable as returned, but it's useful for showing a fee estimate or setting your own gas fields.
+
+| Param | Required | Description |
+|---|---|---|
+| `chainId` | — | One chain. Omit it to get every supported chain as an array; a chain whose RPC is unreachable is left out rather than failing the request. |
+
+```json
+{
+  "chainId": 14,
+  "isEip1559": true,
+  "baseFeePerGas": "25000000000",
+  "standard": { "legacyGasPrice": "26500000000", "maxPriorityFeePerGas": "1500000000", "maxFeePerGas": "51500000000", "waitTimeEstimate": 30 },
+  "fast":     { "legacyGasPrice": "33125000000", "maxPriorityFeePerGas": "1875000000", "maxFeePerGas": "51875000000", "waitTimeEstimate": 15 },
+  "instant":  { "legacyGasPrice": "39750000000", "maxPriorityFeePerGas": "2250000000", "maxFeePerGas": "52250000000", "waitTimeEstimate": 5 }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `chainId` | integer | Chain the reading is for. |
+| `isEip1559` | boolean | Which fields to use. `true`: send `maxFeePerGas` + `maxPriorityFeePerGas`. `false`: send `legacyGasPrice` as `gasPrice`. |
+| `baseFeePerGas` | string \| null | Base fee of the latest block. `null` on legacy chains. |
+| `standard` / `fast` / `instant` | object | The three tiers. |
+| `<tier>.legacyGasPrice` | string | Type-0 gas price. |
+| `<tier>.maxPriorityFeePerGas` | string | Tip. `"0"` on legacy chains. |
+| `<tier>.maxFeePerGas` | string | Priority fee plus headroom over the current base fee. |
+| `<tier>.waitTimeEstimate` | integer | Rough seconds to inclusion. Indicative only, the mempool isn't sampled. |
+
+All values are **wei strings**, the same units `txRequest` uses, so nothing needs converting before you sign. Readings are cached for a few seconds per chain, so polling is cheap.
 
 ### `GET /v1/tx/:hash`
 
