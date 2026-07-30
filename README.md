@@ -17,11 +17,11 @@ Mystic Router is a leading DEX aggregator that finds the best prices across 100+
 ## Contents
 
 - [Why Mystic](#why-mystic)
+- [Authentication](#authentication)
 - [Quickstart](#quickstart)
 - [API reference](#api-reference)
 - [Supported chains & coverage](#supported-chains--coverage)
 - [Fees](#fees)
-- [Authentication, access & rate limits](#authentication-access--rate-limits)
 - [Errors](#errors)
 
 ---
@@ -59,9 +59,15 @@ await http.post('/v1/swap/quote', {
 });
 ```
 
-- **With a valid key** → your revenue share (or surcharge) is applied and attributed to you, and you get the higher rate limit. See [Fees](#fees).
+- **With a valid key** → your revenue share is applied and attributed to you, and you get the higher rate limit. See [Fees](#fees).
 - **With an invalid key** → `401 Invalid API key`. (Omitting the key entirely is fine; sending a bad one is not.)
 - **Without a key** → anonymous: the standard 0.15% fee, no attribution, rate limit of 20 requests per second.
+
+You can also earn fees without a key at all, by passing a `referrer` address on the swap. See [Referral fees](#referral-fees).
+
+### Keeping your key safe
+
+Your API key is a secret tied to your revenue share. Keep it server-side and proxy browser traffic through your own backend. CORS is open, so a key shipped to the frontend can be read and used by anyone. Keys can be rotated by the operator at any time, and partner accounts support an origin allowlist for browser-facing setups.
 
 
 ## Quickstart
@@ -73,7 +79,9 @@ Swap tokens in 6 steps:
 3. Build transaction from quote
 4. Set a token allowance
 5. Send transaction
-6. Track transaction
+6. Get transaction status (optional)
+
+Steps 2 and 3 can be collapsed into a single call if you'd rather not hold a quote id, see [step 3](#3-build-transaction-from-quote).
 
 Two conventions before you start:
 
@@ -141,13 +149,26 @@ async function quote({ chainId, sellToken, buyToken, sellAmount, taker, slippage
 }
 ```
 
-**Example response** (selling 10 WFLR for USDC.e on chain 14). `quotes` is sorted best-first, so **`quotes[0]` is the route you want**:
+**Example response** (selling 10 WFLR for USDC.e on chain 14). The winning route is flattened onto the root, and `quotes` holds the full ranked list, best first:
 
 ```json
 {
   "quoteSetId": "qs_58b12f0b-6a2e-4b0c-9f4e-1c2d3e4f5a6b",
   "partner": { "partnerId": "protocol", "feeBps": 15, "recipient": "0x0F44298b5C26259425f982F8Fe5eEE1C30FaBBe4" },
   "mevAdvice": { "protect": false },
+  "chainId": 14,
+  "inToken": { "address": "0x1d80c49bbbcd1c0911346656b529df9e5c2f783d", "symbol": "WFLR", "name": "Wrapped Flare", "decimals": 18 },
+  "outToken": { "address": "0xfbda5f676cb37624f28265a144a48b0d6e87d3b6", "symbol": "USDC.e", "name": "Bridged USDC (Stargate)", "decimals": 6 },
+  "inAmount": "10000000000000000000",
+  "outAmount": "64199",
+  "minOutAmount": "63878",
+  "estimatedGas": 250000,
+  "price_impact": "0.12%",
+  "from": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  "to": "0x69D57B9D705eaD73a5d2f2476C30c55bD755cc2F",
+  "value": "0",
+  "adapterId": "algebra",
+  "quoteId": "algebra::qs_58b12f0b-6a2e-4b0c-9f4e-1c2d3e4f5a6b",
   "quotes": [
     {
       "quoteId": "algebra::qs_58b12f0b-6a2e-4b0c-9f4e-1c2d3e4f5a6b",
@@ -167,9 +188,11 @@ async function quote({ chainId, sellToken, buyToken, sellAmount, taker, slippage
 }
 ```
 
-`buyAmount` is the expected output (`64199` = `0.064199` USDC.e, since USDC.e has 6 decimals); `minBuyAmount` is the worst case after slippage. Both are reported before Mystic's fee, see [Fees](#fees) for the net-output formula. Keep the `quoteSetId` and the chosen `quoteId`, you pass both to Step 3.
+`outAmount` is the expected output (`64199` = `0.064199` USDC.e, since USDC.e has 6 decimals); `minOutAmount` is the worst case after slippage. Both are reported before Mystic's fee, see [Fees](#fees) for the net-output formula.
 
-Native asset in/out: use `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` as the token. Optional fields: `recipient` (send output elsewhere), `deadlineSeconds`, `partnerId`, `includeAdapters`/`excludeAdapters`, `mevProtect`.
+To execute, keep the root `quoteSetId` and `quoteId` and pass both to Step 3. Read `quotes[]` only when you want to show alternatives or let the user pick a venue; set `bestOnly: true` to drop it from the response entirely.
+
+Native asset in/out: use `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` as the token. Optional fields: `recipient` (send output elsewhere), `deadlineSeconds`, `minOutput`, `bestOnly`, `referrer`/`referrerFee`, `includeDexes`/`excludeDexes`, `partnerId`, `mevProtect`. See the [API reference](#post-v1swapquote) for all of them.
 
 ### 3. Build transaction from quote
 
@@ -201,13 +224,26 @@ async function swap({ quoteSetId, quoteId, userAddress }) {
     "spender": "0x6352B36E5f938C0FdA3BA8da48D5aD14f1DD78E7",
     "amount": "10000000000000000000"
   },
-  "partner": { "partnerId": "protocol", "feeBps": 15, "protocolBps": 15, "partnerBps": 0 }
+  "simulation": { "ok": true },
+  "partner": { "partnerId": "protocol", "feeBps": 15, "protocolBps": 15, "partnerBps": 0, "partnerRecipient": null }
 }
 ```
 
 `txRequest` is what you send from the wallet (Step 5). `approval` tells you which token/spender to approve in Step 4, it's `null` when no approval is needed. If `feeMode` is `augustus`, the fee handling is already baked into `txRequest.data`; you don't need to add anything.
 
 > **Approve the `approval.spender`, not `txRequest.to`.** They are usually different contracts. Approving the wrong address is the single most common integration bug.
+
+**One-call swap.** If you don't want to hold a `quoteSetId`/`quoteId` between calls, send the swap parameters straight to `build`. It quotes, picks the winner and returns its transaction in one round trip:
+
+```js
+const { data } = await axios.post(`${BASE}/v1/swap/build`, {
+  chainId: 14, sellToken: SELL_TOKEN, buyToken: BUY_TOKEN, sellAmount,
+  userAddress: taker, slippageBps: 50,
+});
+// same response shape: data.txRequest, data.approval, data.partner
+```
+
+The trade-off is that you never see the ranked alternatives, and the price is fixed at build time rather than shown to the user first. Use the two-step flow when a human is confirming the trade.
 
 ### 4. Set a token allowance
 
@@ -254,13 +290,14 @@ async function send(signer, txRequest) {
 
 **Gas.** `txRequest` carries no `gas` field on purpose. Let your wallet or provider run `eth_estimateGas` on it. The `estimatedGas` on a quote is a ranking input, not a gas limit; if you set a limit from it, add a buffer of 1.25×–2.5×, or the transaction may run out of gas on a route whose real cost differs from the estimate.
 
-### 6. (Optional) Save transaction
+### 6. Get transaction status (optional)
 
-Register the hash so the operator can confirm status. This is necessary for partners to call to book partner fees gained from this swap.
+Read a swap's status back from the API. Nothing needs to be registered first: a Mystic swap carries a correlation id in its calldata, so the API recognises the hash and attaches it to the quote that produced it.
 
 ```js
-async function track({ chainId, hash, from, quoteSetId, quoteId }) {
-  await axios.post(`${BASE}/v1/tx`, { chainId, hash, from, quoteSetId, quoteId });
+async function status(hash) {
+  const { data } = await axios.get(`${BASE}/v1/tx/${hash}`);
+  return data;
 }
 ```
 
@@ -277,7 +314,7 @@ async function track({ chainId, hash, from, quoteSetId, quoteId }) {
 }
 ```
 
-`status` is `PENDING` right after you submit, then becomes `SUCCESS` (success) or `FAILED` (reverted) once the operator confirms it on-chain. Only a `SUCCESS` swap that matches the original quote books the partner fee, so a spoofed or mismatched hash can't record a fee.
+`status` is `SUCCESS` or `FAILED` once the receipt is on-chain. A hash the API hasn't indexed yet comes back as `{ hash, status: "UNKNOWN", adopting: true }`; poll again shortly. Referral and partner fees are booked from the on-chain event, not from this call, so a spoofed or mismatched hash can't record a fee.
 
 ### Putting it all together
 
@@ -298,10 +335,10 @@ async function doSwap() {
   // 3. transaction body
   const built = await swap({ quoteSetId: q.quoteSetId, quoteId: best.quoteId, userAddress: taker });
 
-  // 4. allowance  5. send  6. track
+  // 4. allowance  5. send  6. status
   await ensureAllowance(signer, built.approval);
   const receipt = await send(signer, built.txRequest);
-  await track({ chainId, hash: receipt.hash, from: taker, quoteSetId: q.quoteSetId, quoteId: best.quoteId });
+  console.log(await status(receipt.hash));
 }
 ```
 
@@ -327,8 +364,14 @@ Fans out across every routing source available for the chain and returns them ra
 | `slippageBps` | integer | — | Basis points; `50` = 0.5%. Range `0`–`5000`. Default `50`. |
 | `recipient` | string | — | Where the bought token is delivered. Defaults to `taker`. See the note below this table. |
 | `deadlineSeconds` | integer | — | Execution deadline encoded into the route. Range `60`–`86400`. |
-| `includeAdapters` | string[] | — | Restrict the fan-out to these sources, using the `adapterId` values quotes report (e.g. `uniswap-v3`, `1inch`). |
-| `excludeAdapters` | string[] | — | Quote everything except these. |
+| `minOutput` | string | — | Hard floor on the bought amount, in base units. Routes whose guaranteed minimum can't meet it are dropped instead of quoted. Overrides the slippage-derived minimum. |
+| `includeDexes` | string[] | — | Restrict the fan-out to these venues, by the `id` values from [`GET /v1/dexes`](#get-v1dexes). |
+| `excludeDexes` | string[] | — | Quote every venue except these. |
+| `includeAdapters` | string[] | — | Same idea at adapter granularity, using the `adapterId` values quotes report (e.g. `uniswap-v3`, `1inch`). Merged with the dex filters. |
+| `excludeAdapters` | string[] | — | Quote everything except these adapters. |
+| `referrer` | string | — | Any EOA you control. Identifies you as the fee payee with no API key and no registration. Pair with `referrerFee`. |
+| `referrerFee` | number | — | Total fee to charge, as a **percent** (`1` = 1%), range `0.01`–`5`. Supersedes whatever fee your API key would have applied. See [Referral fees](#referral-fees). |
+| `bestOnly` | boolean | — | Return only the flattened winner and omit the `quotes` array. The top-level `quoteId` still builds it. |
 | `mevProtect` | boolean | — | Ask for MEV-aware routing. The response's `mevAdvice` reports whether a private RPC is available for the chain. |
 | `useSmartAccount` | boolean | — | Caller settles through a smart account, which lets the first-party engine offer atomic cross-pool split routes. |
 | `partnerId` | string | — | Usually set implicitly via your API key. Passing it explicitly can only request the same or a lower fee. |
@@ -336,15 +379,31 @@ Fans out across every routing source available for the chain and returns them ra
 
 **Response**
 
+The winning route is flattened onto the root of the response, so you can read the numbers without walking into `quotes[0]`. Both views describe the same route.
+
 | Field | Type | Description |
 |---|---|---|
 | `quoteSetId` | string | `qs_…`, identifies this fan-out. Pass to `build`. Retrievable for ~2 minutes. |
-| `partner.partnerId` | string | `protocol` when anonymous, otherwise your partner id. |
+| `quoteId` | string | The winning route's id. Pass to `build`. |
+| `adapterId` | string | Source that produced the winner. |
+| `chainId` | integer | Echo of the request. |
+| `inToken` / `outToken` | object | `{ address, symbol, name, decimals }` for each side. |
+| `inAmount` | string | Input amount in base units. |
+| `outAmount` | string | Expected output in base units, gross of the Mystic fee. |
+| `minOutAmount` | string | Worst-case output after slippage, gross of the fee. |
+| `estimatedGas` | number | Gas estimate for the winning route. |
+| `price_impact` | string | Price impact as a percentage string, e.g. `"0.12%"`. |
+| `from` | string | The `taker` you sent. |
+| `to` | string | Contract the swap will call. |
+| `value` | string | Native value the transaction carries, in wei. |
+| `data` | string | Calldata, when the winning source produced it at quote time. Call `build` for the authoritative transaction. |
+| `partner.partnerId` | string | `protocol` when anonymous, `referrer:0x…` when using a referrer, otherwise your partner id. |
 | `partner.feeBps` | integer | **Total** fee in bps charged on this swap, in the bought token. |
 | `partner.recipient` | string | On-chain fee collection address. |
 | `mevAdvice.protect` | boolean | Whether MEV protection was requested. |
 | `mevAdvice.privateRpc` | string \| null | Private RPC endpoint for the chain, when one is configured. |
-| `quotes[]` | array | Ranked routes, best first. |
+| `dexFilter.notHonored` | string[] | Present only when a `includeDexes`/`excludeDexes` id could not be applied, either because it's unknown or because filtering it would have caught sibling venues on the same adapter. Filters are never applied silently. |
+| `quotes[]` | array | Ranked routes, best first. Omitted when `bestOnly` is set. |
 
 **Quote object** (each entry of `quotes[]`)
 
@@ -382,7 +441,9 @@ Returns **404 `INSUFFICIENT_LIQUIDITY`** when no source can fill the trade.
 
 ### `POST /v1/swap/build`
 
-**Request**
+Two ways to call it. Either pass the ids from a quote, or pass the swap parameters and let `build` quote and pick the winner itself.
+
+**Request, from a quote**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -390,9 +451,31 @@ Returns **404 `INSUFFICIENT_LIQUIDITY`** when no source can fill the trade.
 | `quoteId` | string | ✅ | The chosen route. |
 | `userAddress` | string | ✅ | Wallet that will send the transaction. |
 | `recipient` | string | — | Overrides the quote's recipient. Defaults to the quote's recipient, then `userAddress`. |
-| `partnerId` | string | — | Usually implicit via API key. |
-| `useSmartAccount` | boolean | — | Must match what you quoted with. |
-| `simulate` | boolean | — | Run an advisory Tenderly pre-flight and populate `simulation`. Off by default: it adds a remote round-trip and the returned transaction is byte-identical either way. |
+| `referrer` | string | — | Accepted, but the value used is the one from the original quote's request, so a build can never change the payee the swap was quoted with. |
+| `referrerFee` | number | — | Accepted, but the value used is the one from the original quote's request, so a build can never raise the fee the user was quoted. |
+
+**Request, without a quote**
+
+Omit **both** `quoteSetId` and `quoteId` and send the swap parameters instead. `build` runs the fan-out and builds the best route in the same call.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `userAddress` | string | ✅ | Wallet that will send the transaction, and the taker for the internal quote. |
+| `chainId` | integer | ✅ | Target chain. |
+| `sellToken` | string | ✅ | ERC-20 address, or `0xEeee…EEeE` for native. |
+| `buyToken` | string | ✅ | ERC-20 address, or `0xEeee…EEeE` for native. |
+| `sellAmount` | string | ✅ | Integer string in the smallest unit. |
+| `slippageBps` | integer | — | Basis points; `50` = 0.5%. Range `0`–`5000`. Default `50`. |
+| `minOutput` | string | — | Hard floor on the bought amount, in base units. |
+| `includeDexes` | string[] | — | Restrict the fan-out to these venues, by the `id` values from [`GET /v1/dexes`](#get-v1dexes). |
+| `excludeDexes` | string[] | — | Quote every venue except these. |
+| `includeAdapters` | string[] | — | Restrict the fan-out to these adapters. |
+| `excludeAdapters` | string[] | — | Quote everything except these adapters. |
+| `referrer` | string | — | Any EOA you control. Identifies you as the fee payee. Pair with `referrerFee`. |
+| `referrerFee` | number | — | Total fee to charge, as a **percent** (`1` = 1%), range `0.01`–`5`. |
+| `recipient` | string | — | Where the bought token is delivered. Defaults to `userAddress`. |
+
+Missing parameters return `404` naming which ones are absent.
 
 **Response**
 
@@ -405,8 +488,7 @@ Returns **404 `INSUFFICIENT_LIQUIDITY`** when no source can fill the trade.
 | `permit2` | object \| null | Typed data to sign instead of approving, when the route supports it. |
 | `feeMode` | string | How the fee is collected: `augustus` (atomic, inside `txRequest.data`), `native` (the venue's own referral mechanism), `bundle` (smart-account bundle), `none`. In every case there is nothing extra for you to do. |
 | `partner` | object | `{ partnerId, feeBps, protocolBps, partnerBps, partnerRecipient }`, the fee split for this swap. |
-| `simulation` | object | `{ ok: true }` unless you passed `simulate: true`, in which case it carries the pre-flight result. Advisory only. |
-| `smartAccount` | string \| null | Predicted smart-account address when `useSmartAccount` was set. |
+| `simulation` | object | Advisory pre-flight result. `{ ok: true }` by default. |
 | `directTxRequest` | object | The un-wrapped venue transaction, before Mystic's fee wrapper. Informational: send `txRequest`, not this. |
 
 Returns **404** for an unknown `quoteSetId`/`quoteId`, **410 `QUOTE_EXPIRED`** for a stale quote.
@@ -449,20 +531,75 @@ Live chain support with the contracts Mystic uses:
 ]
 ```
 
-### `POST /v1/tx` and `GET /v1/tx/:hash`
+### `GET /v1/tx/:hash`
 
-`POST` registers a broadcast transaction; it is idempotent on `hash` (re-posting the same hash returns the existing record). `GET` re-reads the receipt and returns the current status.
+Status of a swap transaction.
 
-| Field | Required | Description |
+| Field | Type | Description |
 |---|---|---|
-| `chainId` | ✅ | Chain the tx was sent on. |
-| `hash` | ✅ | Transaction hash. |
-| `from` | ✅ | Sender. |
-| `to` | — | Target contract. |
-| `quoteSetId` / `quoteId` | — | **Include these.** They're what let the indexer attribute the partner fee once the swap confirms. |
-| `intentId` | — | Your own correlation id, if you use one. |
+| `chainId` | integer | Chain the transaction was sent on. |
+| `hash` | string | Transaction hash. |
+| `status` | string | `SUCCESS` or `FAILED` once the receipt is on-chain. |
+| `blockNumber` | integer | Block it landed in. |
+| `gasUsed` | string | Gas consumed. |
+| `effectiveGasPrice` | string | Gas price actually paid. |
+| `from` | string | Sender. |
+| `to` | string | Contract called. |
+| `quoteSetId` / `quoteId` | string | The quote this transaction executed, once matched. |
+| `receipt` | object | Full receipt. |
 
-Status values: `PENDING` → `SUCCESS` \| `FAILED`.
+A hash that hasn't been indexed yet returns `{ hash, status: "UNKNOWN", adopting: true }`. The matching runs in the background, so poll again shortly rather than treating it as an error.
+
+### `GET /v1/dexes`
+
+Every venue quotable on a chain, which is what `includeDexes` / `excludeDexes` filter on. Pass `?chainId=` for one chain, or omit it for all of them.
+
+```json
+[
+  { "id": "sparkdex", "name": "SparkDEX V4", "chainId": 14, "type": "dex", "protocol": "algebra", "router": "0x69D57B9D705eaD73a5d2f2476C30c55bD755cc2F", "adapter": "algebra" },
+  { "id": "openocean", "name": "openocean", "chainId": 14, "type": "aggregator", "adapter": "openocean" }
+]
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Stable id to use in `includeDexes` / `excludeDexes`. |
+| `name` | string | Display name. |
+| `chainId` | integer | Chain the venue is on. |
+| `type` | string | `dex` for a liquidity venue Mystic routes through itself, `aggregator` for a third-party router it asks for a quote. |
+| `protocol` | string | Pool family, e.g. `uniswap-v3`, `algebra`, `curve`. |
+| `router` | string | Router contract, for first-party venues. |
+| `adapter` | string | Adapter that serves it, which is the granularity filtering operates at. |
+
+### `POST /v1/swap/decode`
+
+Explain a transaction's calldata before or after you send it.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `data` | string | ✅ | Transaction input data, `0x`-prefixed. |
+| `chainId` | integer | — | The decoder is chain-agnostic; accepted to keep request shapes uniform. |
+
+```json
+{
+  "kind": "augustus-simple-swap",
+  "augustus": {
+    "fromToken": "0x1d80…783d",
+    "toToken": "0xfbda…d3b6",
+    "beneficiary": "0xd8dA…6045",
+    "partner": "0x0F44…BBe4",
+    "feePercent": "15",
+    "deadline": "1782931426",
+    "uuid": "0x9a3f…"
+  },
+  "calls": [
+    { "selector": "0x095ea7b3", "function": "approve", "to": "0x1d80…783d", "args": ["0x6352…78E7", "10000000000000000000"] },
+    { "selector": "0xbc651188", "function": "exactInputSingle", "to": "0x69D5…cc2F", "args": [ … ] }
+  ]
+}
+```
+
+`kind` is `augustus-simple-swap` for a fee-wrapped Mystic swap, or `call` for a plain adapter call. An unrecognised selector comes back with `function: null` rather than failing, so a partially-recognised route still tells you what it can.
 
 ### Service endpoints
 
@@ -515,15 +652,35 @@ Fees are priced by token category. Today all four categories carry the same rate
 
 > **These rates can change.** The tiers may be differentiated in future (cheaper stables, higher exotics). Always read `partner.feeBps` from the quote response and apply it dynamically rather than hardcoding `15`.
 
+### Referral fees
+
+The fastest way to monetise, with no API key and no onboarding: pass an address you control as `referrer`, and the total fee you want charged as `referrerFee`.
+
+```js
+await axios.post(`${BASE}/v1/swap/quote`, {
+  chainId, sellToken, buyToken, sellAmount, taker,
+  referrer: '0xYourWallet',
+  referrerFee: 1,            // percent, so 1 = 1%
+});
+```
+
+- `referrerFee` is a **percent** and must be between `0.01` and `5`. Anything higher returns `400 FEE_VIOLATION`.
+- It replaces the standard fee rather than adding to it. It is the whole fee charged on that swap, and it supersedes whatever an API key would have applied.
+- You keep **85%** of what's collected and Mystic keeps the rest.
+- The address is the identity. Nothing to register, and it keys the payout ledger the same way a partner does, so accruals settle through the same path.
+- Referral inputs are read from the **quote** when you build from a `quoteId`, so a build can never change the payee or raise the fee the user was quoted.
+
+Fee Collection is not immediate and is done in batches, it accumulates trades rbought by referrer or partner and disburses fees twice every hour.
+
 ### Partner fees
 
-Partners earn a cut of the fee on the swaps they route. The default arrangement is **revenue share at 50/50**: the user pays the standard 0.15% and you receive half of it (7.5 bps), while Mystic keeps the other half. Attaching your key never makes a quote worse for your user.
+Partners earn a cut of the fee on the swaps they route. The default arrangement is **revenue share at 85/15**: the user pays the standard 0.15% and you receive your share of it (12.75 bps), while Mystic keeps the other half. Attaching your key never makes a quote worse for your user.
 
 You can choose either model when your account is provisioned:
 
 | Model | Total charged to the user | You earn |
 |---|---|---|
-| **Revenue share** (default) | Unchanged, 0.15% | Your configured percentage of the fee. Default **50%**, so 0.075% |
+| **Revenue share** (default) | Unchanged, 0.15% | Your configured percentage of the fee. Default **75%**, so 0.1275% |
 | **Surcharge** | 0.15% **+** your bps | Your full bps, on top of Mystic's cut |
 
 On the surcharge model your bps is capped by 100 bps (1%); requesting more returns `400 FEE_VIOLATION`. `partnerFeeBpsOverride` can only ever request less than your configured default, for a promotional pair or a fee-free campaign.
@@ -531,16 +688,10 @@ On the surcharge model your bps is capped by 100 bps (1%); requesting more retur
 ### How you get paid
 
 1. The **total** fee is collected on-chain into Mystic's fee contract at swap time, one collection whichever model you're on.
-2. Your share is booked to an off-chain ledger, but only once the swap **confirms on-chain and matches the quote it references**. This is why [step 6](#6-optional-save-transaction) matters: post the hash with its `quoteSetId` and `quoteId`. A spoofed or mismatched hash books nothing.
+2. Your share is booked to an off-chain ledger once the swap confirms on-chain. Mystic's indexer reads the correlation id embedded in the swap event and matches it to the quote that produced it, so attribution needs no call from you and a spoofed hash books nothing.
 3. Balances are settled to your payout wallet on the operator's settlement cycle.
 
 You can start routing before you have a payout wallet. Fees accrue and are held until you set one, then become payable at the next settlement.
-
----
-
-### Keeping your key safe
-
-Your API key is a secret tied to your revenue. Keep it server-side and proxy browser traffic through your own backend. CORS is open, so a key shipped to the frontend can be read and used by anyone. Keys can be rotated by the operator at any time, and partner accounts support an origin allowlist for browser-facing setups.
 
 ---
 

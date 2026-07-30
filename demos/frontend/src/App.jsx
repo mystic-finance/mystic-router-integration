@@ -80,7 +80,7 @@ export default function App() {
     }
   }, [api, toWei, sell, buy, amount, chainId, account]);
 
-  // Steps 3–6: build -> allowance -> send -> track.
+  // Steps 3–5: build -> allowance -> send.
   const doSwap = useCallback(async () => {
     if (!quote) return;
     setBusy(true);
@@ -105,15 +105,12 @@ export default function App() {
       push(`Sent ${tx.hash} — waiting…`);
       const rc = await tx.wait();
       push(`Status: ${rc.status === 1 ? 'SUCCESS' : 'FAILED'}`);
-
-      await api('/v1/tx', { chainId, hash: tx.hash, from: account, quoteSetId: quote.quoteSetId, quoteId: best.quoteId });
-      push('Tracked. Done.');
     } catch (e) {
       push('Swap failed: ' + e.message);
     } finally {
       setBusy(false);
     }
-  }, [api, quote, account, signer, chainId]);
+  }, [api, quote, account, signer]);
 
   return (
     <>

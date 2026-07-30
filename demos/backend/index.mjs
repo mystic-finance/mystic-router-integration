@@ -1,5 +1,5 @@
 // Mystic Router — Swap API backend demo (Node.js, axios + ethers v6).
-// Mirrors the 6 steps in docs/INTEGRATION.md: token info -> quote -> tx body -> allowance -> send -> track.
+// Mirrors the 6 steps in the README: token info -> quote -> tx body -> allowance -> send -> status.
 //   cp .env.example .env  &&  fill it in  &&  node index.mjs
 import 'dotenv/config';
 import axios from 'axios';
@@ -49,9 +49,11 @@ async function send(signer, txRequest) {
   console.log(`Sent ${tx.hash} — waiting…`);
   return tx.wait();
 }
-// 6. Track transaction
-async function track(body) {
-  await http.post('/v1/tx', body);
+// 6. Get transaction status (optional). Nothing needs registering first — the swap carries a
+// correlation id in its calldata, so the API matches the hash to the quote that produced it.
+async function status(hash) {
+  const { data } = await http.get(`/v1/tx/${hash}`);
+  return data;
 }
 
 async function main() {
@@ -75,8 +77,8 @@ async function main() {
   const receipt = await send(signer, built.txRequest);
   console.log(`Status: ${receipt.status === 1 ? 'SUCCESS' : 'FAILED'} in block ${receipt.blockNumber}`);
 
-  await track({ chainId: CHAIN_ID, hash: receipt.hash, from: taker, quoteSetId: q.quoteSetId, quoteId: best.quoteId });
-  console.log('Tracked. Done.');
+  console.log('Status:', JSON.stringify(await status(receipt.hash)));
+  console.log('Done.');
 }
 
 main().catch((e) => { console.error('Error:', e.response?.data ? JSON.stringify(e.response.data) : e.message); process.exit(1); });
