@@ -247,7 +247,7 @@ The trade-off is that you never see the ranked alternatives, and the price is fi
 
 ### 4. Set a token allowance
 
-If `approval` is returned and the current allowance is insufficient, approve the `spender` (skip for native sells, or use `permit2` if present):
+If `approval` is returned and the current allowance is insufficient, approve the `spender`. You can read the allowance on-chain as below, or from [`GET /v1/allowance`](#get-v1allowance) if you'd rather ask the API, for instance to show the Approve step before the user has a quote:
 
 ```js
 async function ensureAllowance(signer, approval) {
@@ -439,6 +439,45 @@ Returns **404 `INSUFFICIENT_LIQUIDITY`** when no source can fill the trade.
 
 **Recipient.** Set `recipient ≠ taker` to deliver the bought token to a different address. Only sources that can honor a distinct recipient are offered for such a request, so funds never land on the taker by accident. If that filter leaves nothing routable you'll get `404 INSUFFICIENT_LIQUIDITY`; retry without `recipient` and transfer separately.
 
+### `POST /v1/swap/quote/reverse`
+
+The buy flow: state the output you want and get back the input required, along with a real quote you can build. Use it for "I want exactly 100 USDC" rather than "I want to sell 1 ETH".
+
+**Request**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `chainId` | integer | ✅ | Target chain. |
+| `sellToken` | string | ✅ | Token being sold. |
+| `buyToken` | string | ✅ | Token being bought. |
+| `buyAmount` | string | ✅ | Desired **output**, in the buy token's base units. |
+| `taker` | string | ✅ | Wallet that signs and sends the swap. |
+| `slippageBps` | integer | — | Basis points; `50` = 0.5%. Range `0`–`5000`. Default `50`. |
+| `toleranceBps` | integer | — | How close the solved output must land to `buyAmount`, in bps. Range `1`–`1000`. Default `50` (0.5%). |
+| `recipient` | string | — | Where the bought token is delivered. Defaults to `taker`. |
+| `includeDexes` | string[] | — | Venue filter, as on `quote`. |
+| `excludeDexes` | string[] | — | Venue filter, as on `quote`. |
+| `includeAdapters` | string[] | — | Adapter filter, as on `quote`. |
+| `excludeAdapters` | string[] | — | Adapter filter, as on `quote`. |
+| `referrer` | string | — | Referral payee, as on `quote`. |
+| `referrerFee` | number | — | Total fee percent, as on `quote`. |
+| `partnerId` | string | — | Usually implicit via API key. |
+
+**Response**
+
+Everything a normal quote returns, including `quoteSetId` and `quoteId`, so you can build the result directly. On top of that:
+
+| Field | Type | Description |
+|---|---|---|
+| `reverse.requestedBuyAmount` | string | The output you asked for. |
+| `reverse.achievedBuyAmount` | string | The output the solved input actually produces. |
+| `reverse.sellAmount` | string | The input required. This is the number you wanted. |
+| `reverse.offByBps` | integer | Distance between requested and achieved, in bps. |
+| `reverse.withinTolerance` | boolean | Whether `offByBps` came in under `toleranceBps`. |
+| `reverse.passes` | integer | How many quote passes the solver used, up to 3. |
+
+The solver quotes forward, measures the rate and corrects, up to three passes. AMM pricing is non-linear, so the result is an approximation: check `withinTolerance` before treating the input as exact, and remember the quote's own `minOutAmount` still applies at execution. Returns `404 INSUFFICIENT_LIQUIDITY` when no input size produces output for the pair.
+
 ### `POST /v1/swap/build`
 
 Two ways to call it. Either pass the ids from a quote, or pass the swap parameters and let `build` quote and pick the winner itself.
@@ -530,6 +569,33 @@ Live chain support with the contracts Mystic uses:
   }
 ]
 ```
+
+### `GET /v1/allowance`
+
+Current ERC-20 allowances for a wallet, so a UI can decide whether to show an Approve step before it has a quote.
+
+| Param | Required | Description |
+|---|---|---|
+| `chainId` | ✅ | Chain to read from. |
+| `account` | ✅ | Wallet whose allowances you're checking. |
+| `tokens` | ✅ | Comma-separated token addresses. |
+| `spender` | ✅  | You can Pass `approval.spender` from `build` once a route is chosen. |
+| `amount` | — | Base units. When present, each row gains a `sufficient` boolean. |
+
+```json
+[
+  {
+    "token": "0x1d80c49bbbcd1c0911346656b529df9e5c2f783d",
+    "spender": "0x6352B36E5f938C0FdA3BA8da48D5aD14f1DD78E7",
+    "allowance": "0",
+    "sufficient": false
+  }
+]
+```
+
+Selling the native asset needs no approval, so the sentinel address reports an unlimited allowance rather than making you special-case it. A token that can't be read, whether it's not an ERC-20 or the RPC is down, reports `0`, so the answer is always the safe one.
+
+This is a pre-flight convenience, not the source of truth. External aggregators use their own spender, which is only known once a route is picked, so `approval.spender` from [`POST /v1/swap/build`](#post-v1swapbuild) remains authoritative. Chains without a canonical pull address return `400` telling you to pass `spender` explicitly.
 
 ### `GET /v1/gas-price`
 
